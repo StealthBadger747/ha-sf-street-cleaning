@@ -24,26 +24,72 @@ A new sensor `sensor.sf_street_cleaning_status` will be created.
 
 ## Notifications (Automation)
 
-This component fires an event `sf_street_cleaning_alert` when a high-priority warning is detected. Use this to send notifications.
+This integration provides the data (sensor attributes). You can create Automations in Home Assistant to notify you.
 
-### Example Automation (`automations.yaml`)
+### Example 1: Imminent Warning (2 Hours Before)
 
 ```yaml
-alias: "SF Street Cleaning Alert"
-description: "Notify when parked in a street cleaning zone."
+alias: "Street Cleaning: 2 Hour Warning"
 trigger:
-  - platform: event
-    event_type: sf_street_cleaning_alert
+  - platform: numeric_state
+    entity_id: sensor.sf_street_cleaning_status
+    attribute: cleaning_in_hours
+    below: 2.1
+    above: 0
 action:
-  - service: notify.mobile_app_your_phone
+  - action: notify.mobile_app_your_phone
     data:
-      title: "🧹 Street Cleaning Warning!"
-      message: >
-        Your car is parked on {{ trigger.event.data.street }} ({{ trigger.event.data.side }}).
-        Cleaning starts at {{ trigger.event.data.next_cleaning }}.
-        Please move it within {{ trigger.event.data.hours_until }} hours!
+      title: "🧹 Move Car Now!"
+      message: "Cleaning starts in {{ state_attr('sensor.sf_street_cleaning_status', 'cleaning_in_hours') }} hours on {{ state_attr('sensor.sf_street_cleaning_status', 'street') }}."
       data:
         push:
             sound: "US-EN-Morgan-Freeman-Roommate-Is-Arriving.wav"
             importance: high
 ```
+
+### Example 2: Night Before Warning (10 PM)
+
+Checks at 10 PM if there is cleaning *tomorrow morning* (e.g. within 12 hours).
+
+```yaml
+alias: "Street Cleaning: Night Before"
+trigger:
+  - platform: time
+    at: "22:00:00"
+condition:
+  - condition: numeric_state
+    entity_id: sensor.sf_street_cleaning_status
+    attribute: cleaning_in_hours
+    below: 24 # 10 PM + 24h = covers all street cleaning for the next day.
+    above: 0
+action:
+  - action: notify.mobile_app_your_phone
+    data:
+      title: "🧹 Cleaning Tomorrow Morning"
+      message: "Don't forget! Cleaning on {{ state_attr('sensor.sf_street_cleaning_status', 'street') }} is tomorrow at {{ state_attr('sensor.sf_street_cleaning_status', 'next_cleaning') }}."
+```
+
+## Testing
+
+To verify everything is working without waiting for street cleaning:
+
+### 1. Test the Automations
+Go to **Settings > Automations**.
+1.  Find your create automation.
+2.  Click the three dots -> **Run**.
+3.  Verify you get the notification on your phone.
+
+### 2. Test the Sensor Logic
+Go to **Developer Tools > States**.
+1.  Find your `device_tracker` entity (e.g. `device_tracker.fordpass_...`).
+2.  Note its current state.
+3.  **Set State** to a location in a cleaning zone:
+    *   **State**: `not_home`
+    *   **Attributes**: Paste the current attributes but change `latitude` and `longitude`.
+    *   **Coordinates for Testing (Marina)**:
+        *   Lat: `37.8000`
+        *   Lon: `-122.4400`
+        *   Heading: `0` (North)
+4.  Click **Set State**.
+5.  Check `sensor.sf_street_cleaning_status`. Any automation looking for `cleaning_in_hours` should trigger if the time aligns.
+

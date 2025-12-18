@@ -20,7 +20,6 @@ from homeassistant.util import dt as dt_util
 from .const import (
     DOMAIN,
     CONF_DEVICE_TRACKER,
-    EVENT_ALERT,
     ATTR_STREET,
     ATTR_SIDE,
     ATTR_NEXT_CLEANING,
@@ -161,9 +160,6 @@ class SFStreetCleaningSensor(SensorEntity):
                 else:
                     self._state = "Clear"
                     
-                # EVENT / NOTIFICATION LOGIC
-                self._check_and_fire_alert(result, hours_until, cleaning_dt)
-                
             else:
                 self._state = "No Schedule Found"
                 self._attributes[ATTR_CLEANING_IN_HOURS] = -1
@@ -171,40 +167,7 @@ class SFStreetCleaningSensor(SensorEntity):
         except Exception as e:
             _LOGGER.error("Error updating street cleaning sensor: %s", e)
             self._state = "Error"
-            
     
-    def _check_and_fire_alert(self, result, hours_until, cleaning_dt):
-        """Decides whether to fire a notification event."""
-        # Only alert if vehicle is parked (assumed implies ignition OFF, but tracker might not show that explicitly)
-        # We rely on position stability or just sending the alert once per 'session'.
-        # For this simple v1: Alert if < 12h and we haven't alerted for this specific cleaning time yet.
-        
-        if hours_until < 12 and hours_until > -2:
-            alert_key = f"{result.get('street')}_{result.get('parkedOnSide')}_{cleaning_dt.isoformat()}"
-            
-            if alert_key not in self._last_alert_time:
-                # FIRE EVENT
-                _LOGGER.info("Firing street cleaning alert for %s", alert_key)
-                
-                event_data = {
-                    "vehicle_entity": self._device_tracker_id,
-                    "street": result.get("street"),
-                    "side": result.get("parkedOnSide"),
-                    "next_cleaning": cleaning_dt.isoformat(),
-                    "hours_until": round(hours_until, 1),
-                    "urgency": "high" if hours_until < 3 else "normal"
-                }
-                
-                self.hass.bus.async_fire(EVENT_ALERT, event_data)
-                
-                self._last_alert_time[alert_key] = dt_util.now()
-                
-                # Cleanup old keys
-                current_time = dt_util.now()
-                keys_to_remove = [k for k, v in self._last_alert_time.items() if (current_time - v).total_seconds() > 86400] # 24h retention
-                for k in keys_to_remove:
-                    del self._last_alert_time[k]
-
     @property
     def native_value(self):
         """Return the state of the sensor."""
