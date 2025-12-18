@@ -1,0 +1,27 @@
+name: Zip Release
+
+on:
+  release:
+    types:
+      - published
+
+jobs:
+  release:
+    name: Release sf_street_cleaning
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: ⤵️ Check out code from GitHub
+        uses: actions/checkout@v4
+
+      - name: 📦 Create zipped release package
+        shell: bash
+        run: |
+          cd "${{ github.workspace }}/custom_components/sf_street_cleaning"
+          zip sf_street_cleaning.zip -r ./
+
+      - name: ⬆️ Upload zip to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ github.workspace }}/custom_components/sf_street_cleaning/sf_street_cleaning.zip
