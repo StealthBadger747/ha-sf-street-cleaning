@@ -1,5 +1,7 @@
 # SF Street Cleaning Home Assistant Integration
 
+[![Open your Home Assistant instance and adding repository to HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=StealthBadger747&repository=ha-sf-street-cleaning&category=integration) [![Open your Home Assistant instance and start setting up a new integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=sf_street_cleaning)
+
 A native Home Assistant Custom Component that monitors your vehicle's location (via `ha-fordpass`) and warns you about upcoming San Francisco street cleaning.
 
 ## Installation
