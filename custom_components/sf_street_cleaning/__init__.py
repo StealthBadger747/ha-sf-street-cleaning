@@ -8,6 +8,7 @@ import asyncio
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import DOMAIN, GEOJSON_URL
@@ -15,6 +16,7 @@ from .const import DOMAIN, GEOJSON_URL
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [Platform.SENSOR]
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Set up the SF Street Cleaning integration component."""
@@ -25,7 +27,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up SF Street Cleaning from a config entry."""
     
     hass.data.setdefault(DOMAIN, {})
-    geojson_url = entry.data.get("geojson_url")
+    geojson_url = entry.data.get("geojson_url") or GEOJSON_URL
     hass.data[DOMAIN]["geojson_url"] = geojson_url
     
     # Load GeoJSON Data
