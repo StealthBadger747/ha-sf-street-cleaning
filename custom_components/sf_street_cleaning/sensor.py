@@ -160,12 +160,48 @@ class SFStreetCleaningSensor(SensorEntity):
                     _LOGGER.debug("Street cleaning: heading fallback sensor %s not found", gps_entity_id)
             
             rotation = 0
-            if img_rot is not None:
-                try:
-                    rotation = int(float(img_rot)) % 360
-                except ValueError:
-                    pass
-            _LOGGER.debug("Street cleaning: heading=%s rotation=%s", img_rot, rotation)
+            img_val = img_rot
+
+            # Normalize heading type
+            if isinstance(img_val, dict):
+                img_val = (
+                    img_val.get("heading")
+                    or img_val.get("value")
+                    or next(
+                        (v for v in img_val.values() if isinstance(v, (int, float, str))),
+                        None,
+                    )
+                )
+
+            if isinstance(img_val, str):
+                direction_map = {
+                    "N": 0,
+                    "NORTH": 0,
+                    "NE": 45,
+                    "NORTHEAST": 45,
+                    "E": 90,
+                    "EAST": 90,
+                    "SE": 135,
+                    "SOUTHEAST": 135,
+                    "S": 180,
+                    "SOUTH": 180,
+                    "SW": 225,
+                    "SOUTHWEST": 225,
+                    "W": 270,
+                    "WEST": 270,
+                    "NW": 315,
+                    "NORTHWEST": 315,
+                }
+                upper = img_val.strip().upper()
+                if upper in direction_map:
+                    img_val = direction_map[upper]
+
+            try:
+                if img_val is not None:
+                    rotation = int(float(img_val)) % 360
+            except (ValueError, TypeError):
+                rotation = 0
+            _LOGGER.debug("Street cleaning: heading=%s rotation=%s", img_val, rotation)
             
             # Use geometry logic
             result = find_cleaning_data(self._geojson, lat, lon, rotation)
