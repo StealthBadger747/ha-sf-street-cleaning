@@ -1,0 +1,12 @@
+{
+    "domain": "sf_street_cleaning",
+    "name": "SF Street Cleaning",
+    "version": "0.1.0",
+    "codeowners": [
+        "@erik"
+    ],
+    "dependencies": [],
+    "requirements": [],
+    "documentation": "https://github.com/erik/sf-street-cleaning",
+    "iot_class": "cloud_polling"
+}
