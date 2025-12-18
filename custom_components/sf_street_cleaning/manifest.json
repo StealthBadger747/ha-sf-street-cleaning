@@ -3,10 +3,10 @@
     "name": "SF Street Cleaning",
     "version": "0.1.0",
     "codeowners": [
-        "@erik"
+        "@StealthBadger747"
     ],
     "dependencies": [],
     "requirements": [],
-    "documentation": "https://github.com/erik/sf-street-cleaning",
+    "documentation": "https://github.com/StealthBadger747/ha-sf-street-cleaning",
     "iot_class": "cloud_polling"
 }
