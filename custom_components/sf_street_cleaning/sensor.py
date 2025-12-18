@@ -139,6 +139,25 @@ class SFStreetCleaningSensor(SensorEntity):
             _LOGGER.debug("Street cleaning: tracker %s lat=%s lon=%s", self._device_tracker_id, lat, lon)
             # Try different potential attribute names for heading
             img_rot = tracker_state.attributes.get("course", tracker_state.attributes.get("heading", tracker_state.attributes.get("compassDirection")))
+            if img_rot is None:
+                # Fallback: check FordPass GPS sensor for heading/compassDirection
+                gps_entity_id = (
+                    self._device_tracker_id
+                    .replace("device_tracker.", "sensor.")
+                    .replace("_tracker", "_gps")
+                )
+                gps_state = self.hass.states.get(gps_entity_id)
+                if gps_state:
+                    img_rot = gps_state.attributes.get(
+                        "course",
+                        gps_state.attributes.get(
+                            "heading",
+                            gps_state.attributes.get("compassDirection"),
+                        ),
+                    )
+                    _LOGGER.debug("Street cleaning: heading fallback from %s -> %s", gps_entity_id, img_rot)
+                else:
+                    _LOGGER.debug("Street cleaning: heading fallback sensor %s not found", gps_entity_id)
             
             rotation = 0
             if img_rot is not None:
