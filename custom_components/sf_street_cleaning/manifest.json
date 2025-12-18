@@ -1,13 +1,14 @@
 {
-    "config_flow": true,
-    "dependencies": [],
+    "domain": "sf_street_cleaning",
+    "name": "SF Street Cleaning",
     "codeowners": [
         "@StealthBadger747"
     ],
+    "config_flow": true,
+    "dependencies": [],
     "documentation": "https://github.com/StealthBadger747/ha-sf-street-cleaning",
-    "domain": "sf_street_cleaning",
+    "issue_tracker": "https://github.com/StealthBadger747/ha-sf-street-cleaning/issues",
     "iot_class": "cloud_polling",
-    "name": "SF Street Cleaning",
     "requirements": [],
     "version": "0.1.0"
 }
