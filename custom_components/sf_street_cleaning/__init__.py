@@ -34,7 +34,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.info("Fetching SF Street Cleaning GeoJSON from %s", GEOJSON_URL)
             async with session.get(GEOJSON_URL) as response:
                 response.raise_for_status()
-                geojson_data = await response.json()
+                # GitHub raw returns text/plain; allow parse despite content-type
+                geojson_data = await response.json(content_type=None)
                 hass.data[DOMAIN]["geojson"] = geojson_data
                 _LOGGER.info("Successfully loaded %d features from GeoJSON", len(geojson_data.get("features", [])))
         except Exception as err:

@@ -107,7 +107,8 @@ class SFStreetCleaningSensor(SensorEntity):
             _LOGGER.info("Street cleaning: refreshing GeoJSON from %s", GEOJSON_URL)
             async with session.get(GEOJSON_URL) as resp:
                 resp.raise_for_status()
-                new_geojson = await resp.json()
+                # GitHub raw returns text/plain; allow parse despite content-type
+                new_geojson = await resp.json(content_type=None)
                 data["geojson"] = new_geojson
                 data["geojson_fetched_at"] = now
                 self._geojson = new_geojson
