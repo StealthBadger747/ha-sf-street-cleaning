@@ -1,0 +1,30 @@
+[project]
+name = "sf-street-cleaning-integration"
+version = "0.1.0"
+description = "SF Street Cleaning Home Assistant Integration"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "homeassistant>=2024.1.0",
+    "voluptuous>=0.13.1",
+    "voluptuous>=0.13.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-homeassistant-custom-component>=0.13.0", # Helpful for testing HA components
+    "ruff"
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = [
+    "tests",
+]
+[tool.uv.extra-build-dependencies]
+lru-dict = ["setuptools"]
+"mock-open-1.4.0" = ["setuptools"]
+"PyRIC-0.1.6.3" = ["setuptools"]
+orjson = ["maturin"]  # Common HA dependency that needs build tools
+home-assistant-bluetooth = ["poetry-core"]

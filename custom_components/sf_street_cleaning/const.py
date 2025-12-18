@@ -5,6 +5,8 @@ DOMAIN = "sf_street_cleaning"
 # GitHub URL for the neighborhood GeoJSON data
 GEOJSON_URL = "https://raw.githubusercontent.com/kaushalpartani/sf-street-cleaning/refs/heads/main/data/neighborhoods/Marina.geojson"
 GEOJSON_REFRESH_INTERVAL_HOURS = 24
+NEIGHBORHOODS_INDEX_URL = "https://raw.githubusercontent.com/kaushalpartani/sf-street-cleaning/refs/heads/main/data/neighborhoods.geojson"
+NEIGHBORHOOD_FILE_URL_TEMPLATE = "https://raw.githubusercontent.com/kaushalpartani/sf-street-cleaning/refs/heads/main/data/neighborhoods/{file}.geojson"
 
 # Configuration Keys
 CONF_DEVICE_TRACKER = "device_tracker_id"

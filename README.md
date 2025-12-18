@@ -4,6 +4,9 @@
 
 A native Home Assistant Custom Component that monitors your vehicle's location (via `ha-fordpass`) and warns you about upcoming San Francisco street cleaning.
 
+> Note on vehicle data: This integration has been developed and tested with the [marq24/ha-fordpass](https://github.com/marq24/ha-fordpass) implementation. It may work with other FordPass integrations, but hasn’t been validated there and currently has limited flexibility.
+> Coverage: Uses the San Francisco neighborhoods index (`data/neighborhoods.geojson`) and auto-fetches the matching neighborhood file. You can also supply a custom GeoJSON URL during setup if you prefer.
+
 ## Installation
 
 ### HACS
@@ -25,6 +28,8 @@ A new sensor `sensor.sf_street_cleaning_status` will be created.
 ## Notifications (Automation)
 
 This integration provides the data (sensor attributes). You can create Automations in Home Assistant to notify you.
+
+Tip: swap `notify.notify` for your device target (e.g., `notify.mobile_app_eriks_iphone`).
 
 ### Example 1: Imminent Warning (2 Hours Before)
 
@@ -94,6 +99,102 @@ action:
       message: "You are parked on {{ state_attr('sensor.sf_street_cleaning_status', 'street') }}. Next cleaning is {{ state_attr('sensor.sf_street_cleaning_status', 'next_cleaning') }}."
 ```
 
+### Example 4: Critical Warnings at 60/30/10 Minutes
+
+```yaml
+alias: "Street Cleaning: Critical Warnings"
+trigger:
+  - platform: numeric_state
+    entity_id: sensor.sf_street_cleaning_status
+    attribute: cleaning_in_hours
+    below: 1.05
+    above: 0
+    id: t60
+  - platform: numeric_state
+    entity_id: sensor.sf_street_cleaning_status
+    attribute: cleaning_in_hours
+    below: 0.55
+    above: 0.25
+    id: t30
+  - platform: numeric_state
+    entity_id: sensor.sf_street_cleaning_status
+    attribute: cleaning_in_hours
+    below: 0.2
+    above: 0
+    id: t10
+condition:
+  - condition: template
+    value_template: "{{ not states('sensor.sf_street_cleaning_status') in ['unknown','unavailable','Unknown Location','No Schedule Found'] }}"
+action:
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: t60
+        sequence:
+          - action: notify.notify
+            data:
+              title: "🧹 Street Cleaning in 60m"
+              message: "Move by {{ state_attr('sensor.sf_street_cleaning_status','next_cleaning') }} on {{ state_attr('sensor.sf_street_cleaning_status','street') }} ({{ state_attr('sensor.sf_street_cleaning_status','side') }})."
+              data:
+                push:
+                  sound:
+                    name: default
+                    critical: 1
+                    volume: 1
+                  importance: high
+      - conditions:
+          - condition: trigger
+            id: t30
+        sequence:
+          - action: notify.notify
+            data:
+              title: "🧹 Street Cleaning in 30m"
+              message: "Move by {{ state_attr('sensor.sf_street_cleaning_status','next_cleaning') }} on {{ state_attr('sensor.sf_street_cleaning_status','street') }} ({{ state_attr('sensor.sf_street_cleaning_status','side') }})."
+              data:
+                push:
+                  sound:
+                    name: default
+                    critical: 1
+                    volume: 1
+                  importance: high
+      - conditions:
+          - condition: trigger
+            id: t10
+        sequence:
+          - action: notify.notify
+            data:
+              title: "🧹 Street Cleaning in 10m"
+              message: "Move now! Cleaning at {{ state_attr('sensor.sf_street_cleaning_status','next_cleaning') }} on {{ state_attr('sensor.sf_street_cleaning_status','street') }} ({{ state_attr('sensor.sf_street_cleaning_status','side') }})."
+              data:
+                push:
+                  sound:
+                    name: default
+                    critical: 1
+                    volume: 1
+                  importance: high
+mode: single
+```
+
+### Example 5: FordPass Refresh While Parked
+
+Keep FordPass data fresh when the ignition is off so the street cleaning sensor has up-to-date coordinates.
+
+```yaml
+alias: "FordPass: Refresh While Parked"
+trigger:
+  - platform: time_pattern
+    minutes: "/30"
+condition:
+  - condition: state
+    entity_id: sensor.fordpass_your_vehicle_ignitionstatus
+    state: "OFF"
+action:
+  - action: button.press
+    target:
+      entity_id: button.fordpass_your_vehicle_request_refresh
+mode: single
+```
+
 ## Testing
 
 To verify everything is working without waiting for street cleaning:
@@ -117,4 +218,3 @@ Go to **Developer Tools > States**.
         *   Heading: `0` (North)
 4.  Click **Set State**.
 5.  Check `sensor.sf_street_cleaning_status`. Any automation looking for `cleaning_in_hours` should trigger if the time aligns.
-

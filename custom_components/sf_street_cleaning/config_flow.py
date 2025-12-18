@@ -11,7 +11,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import selector
 
-from .const import DOMAIN, CONF_DEVICE_TRACKER
+from .const import DOMAIN, CONF_DEVICE_TRACKER, GEOJSON_URL
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -19,6 +19,9 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_DEVICE_TRACKER): selector.EntitySelector(
             selector.EntitySelectorConfig(domain="device_tracker")
+        ),
+        vol.Optional("geojson_url", default=None): selector.TextSelector(
+            selector.TextSelectorConfig(type=selector.TextSelectorType.URL)
         ),
     }
 )

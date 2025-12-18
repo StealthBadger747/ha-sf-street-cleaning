@@ -23,6 +23,8 @@ from .const import (
     CONF_DEVICE_TRACKER,
     GEOJSON_URL,
     GEOJSON_REFRESH_INTERVAL_HOURS,
+    NEIGHBORHOODS_INDEX_URL,
+    NEIGHBORHOOD_FILE_URL_TEMPLATE,
     ATTR_STREET,
     ATTR_SIDE,
     ATTR_NEXT_CLEANING,
@@ -43,12 +45,14 @@ async def async_setup_entry(
     """Set up the sensor platform."""
     device_tracker_id = entry.data.get(CONF_DEVICE_TRACKER)
     geojson = hass.data[DOMAIN].get("geojson")
+    geojson_url = hass.data[DOMAIN].get("geojson_url", GEOJSON_URL)
+    neighborhoods_index = hass.data[DOMAIN].get("neighborhoods_index")
     
     if not device_tracker_id:
         _LOGGER.error("No device_tracker_id found in config entry")
         return
 
-    async_add_entities([SFStreetCleaningSensor(hass, device_tracker_id, geojson)], True)
+    async_add_entities([SFStreetCleaningSensor(hass, device_tracker_id, geojson, geojson_url, neighborhoods_index)], True)
 
 
 class SFStreetCleaningSensor(SensorEntity):
@@ -59,17 +63,21 @@ class SFStreetCleaningSensor(SensorEntity):
     _attr_has_entity_name = True
     _attr_should_poll = True  # allow HA to poll in case tracker events are missed
 
-    def __init__(self, hass: HomeAssistant, device_tracker_id: str, geojson: dict):
+    def __init__(self, hass: HomeAssistant, device_tracker_id: str, geojson: dict, geojson_url: str | None, neighborhoods_index: dict | None):
         """Initialize the sensor."""
         self.hass = hass
         self._device_tracker_id = device_tracker_id
         self._geojson = geojson
+        self._geojson_url = geojson_url  # None triggers neighborhood auto-detect
+        self._neighborhoods_index = neighborhoods_index
         self._state = STATE_UNKNOWN
         self._attributes = {}
         self._attr_unique_id = f"sf_street_cleaning_{device_tracker_id}"
         
         # Track last alert to avoid spamming
         self._last_alert_time: dict[str, datetime] = {}
+        # Cache neighborhood geojsons to avoid refetching
+        self._neighborhood_geojsons: dict[str, dict] = {}
 
     async def async_added_to_hass(self) -> None:
         """Handle entity which will be added."""
@@ -88,8 +96,51 @@ class SFStreetCleaningSensor(SensorEntity):
 
     async def _async_ensure_geojson(self) -> None:
         """Refresh GeoJSON daily in case upstream data changes."""
-        if not GEOJSON_URL:
+        data = self.hass.data.setdefault(DOMAIN, {})
+
+        # If user supplied an explicit URL, honor it
+        if self._geojson_url:
+            await self._async_fetch_geojson(self._geojson_url, data)
             return
+
+        # Otherwise: auto-select neighborhood based on point-in-polygon
+        if not self._neighborhoods_index:
+            self._neighborhoods_index = await self._async_fetch_neighborhood_index(data)
+        if not self._neighborhoods_index:
+            return
+
+        tracker_state = self.hass.states.get(self._device_tracker_id)
+        if not tracker_state:
+            return
+        try:
+            lat = float(tracker_state.attributes.get("latitude", 0))
+            lon = float(tracker_state.attributes.get("longitude", 0))
+        except Exception:
+            return
+
+        neighborhood_file = self._find_neighborhood_file(lat, lon, self._neighborhoods_index)
+        if not neighborhood_file:
+            return
+
+        neighborhood_url = NEIGHBORHOOD_FILE_URL_TEMPLATE.format(file=neighborhood_file)
+        await self._async_fetch_geojson(neighborhood_url, data)
+
+    async def _async_fetch_neighborhood_index(self, data: dict) -> dict | None:
+        """Fetch neighborhoods index (MultiPolygon per neighborhood)."""
+        try:
+            session = async_get_clientsession(self.hass)
+            _LOGGER.info("Street cleaning: fetching neighborhoods index from %s", NEIGHBORHOODS_INDEX_URL)
+            async with session.get(NEIGHBORHOODS_INDEX_URL) as resp:
+                resp.raise_for_status()
+                index = await resp.json(content_type=None)
+                data["neighborhoods_index"] = index
+                return index
+        except Exception as err:
+            _LOGGER.warning("Street cleaning: failed to fetch neighborhoods index (%s)", err)
+            return None
+
+    async def _async_fetch_geojson(self, url: str, data: dict) -> None:
+        """Fetch a GeoJSON street segment file with caching and refresh interval."""
         data = self.hass.data.setdefault(DOMAIN, {})
         geojson = data.get("geojson")
         fetched_at = data.get("geojson_fetched_at")
@@ -104,8 +155,8 @@ class SFStreetCleaningSensor(SensorEntity):
             return
         try:
             session = async_get_clientsession(self.hass)
-            _LOGGER.info("Street cleaning: refreshing GeoJSON from %s", GEOJSON_URL)
-            async with session.get(GEOJSON_URL) as resp:
+            _LOGGER.info("Street cleaning: refreshing GeoJSON from %s", url)
+            async with session.get(url) as resp:
                 resp.raise_for_status()
                 # GitHub raw returns text/plain; allow parse despite content-type
                 new_geojson = await resp.json(content_type=None)
@@ -207,8 +258,12 @@ class SFStreetCleaningSensor(SensorEntity):
             result = find_cleaning_data(self._geojson, lat, lon, rotation)
             
             if not result:
-                self._state = "Unknown Location"
-                self._attributes = {}
+                self._state = "Out of Coverage"
+                self._attributes = {
+                    "latitude": lat,
+                    "longitude": lon,
+                    "reason": "no_segment_match"
+                }
                 _LOGGER.debug("Street cleaning: no matching segment found for lat=%s lon=%s", lat, lon)
                 return
 
@@ -270,6 +325,42 @@ class SFStreetCleaningSensor(SensorEntity):
         except Exception as e:
             _LOGGER.error("Error updating street cleaning sensor: %s", e)
             self._state = "Error"
+
+    def _find_neighborhood_file(self, lat: float, lon: float, index: dict) -> str | None:
+        """Return neighborhood file name if point is inside any polygon."""
+        try:
+            for feat in index.get("features", []):
+                props = feat.get("properties", {})
+                fname = props.get("FileName")
+                geom = feat.get("geometry", {})
+                if not fname or geom.get("type") != "MultiPolygon":
+                    continue
+                if self._point_in_multipolygon(lat, lon, geom.get("coordinates", [])):
+                    return fname
+        except Exception as err:
+            _LOGGER.debug("Street cleaning: neighborhood detection failed: %s", err)
+        return None
+
+    def _point_in_polygon(self, lat: float, lon: float, ring: list[list[float]]) -> bool:
+        """Ray casting for single polygon ring; ring is list of [lon, lat]."""
+        inside = False
+        n = len(ring)
+        for i in range(n):
+            x1, y1 = ring[i][0], ring[i][1]
+            x2, y2 = ring[(i + 1) % n][0], ring[(i + 1) % n][1]
+            if ((y1 > lat) != (y2 > lat)) and (lon < (x2 - x1) * (lat - y1) / (y2 - y1 + 1e-12) + x1):
+                inside = not inside
+        return inside
+
+    def _point_in_multipolygon(self, lat: float, lon: float, multipoly: list) -> bool:
+        """Check point in multipolygon (list of polygons; each polygon is list of rings)."""
+        for poly in multipoly:
+            if not poly:
+                continue
+            exterior = poly[0]
+            if self._point_in_polygon(lat, lon, exterior):
+                return True
+        return False
     
     @property
     def native_value(self):

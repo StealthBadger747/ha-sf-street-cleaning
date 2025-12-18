@@ -25,14 +25,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up SF Street Cleaning from a config entry."""
     
     hass.data.setdefault(DOMAIN, {})
+    geojson_url = entry.data.get("geojson_url")
+    hass.data[DOMAIN]["geojson_url"] = geojson_url
     
     # Load GeoJSON Data
     # We load this once during setup and store it in hass.data
     if "geojson" not in hass.data[DOMAIN]:
         try:
             session = async_get_clientsession(hass)
-            _LOGGER.info("Fetching SF Street Cleaning GeoJSON from %s", GEOJSON_URL)
-            async with session.get(GEOJSON_URL) as response:
+            _LOGGER.info("Fetching SF Street Cleaning GeoJSON from %s", geojson_url)
+            async with session.get(geojson_url) as response:
                 response.raise_for_status()
                 # GitHub raw returns text/plain; allow parse despite content-type
                 geojson_data = await response.json(content_type=None)
