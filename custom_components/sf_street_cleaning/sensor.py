@@ -13,6 +13,7 @@ from homeassistant.const import (
     CONF_NAME,
 )
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.util import dt as dt_util
@@ -20,6 +21,8 @@ from homeassistant.util import dt as dt_util
 from .const import (
     DOMAIN,
     CONF_DEVICE_TRACKER,
+    GEOJSON_URL,
+    GEOJSON_REFRESH_INTERVAL_HOURS,
     ATTR_STREET,
     ATTR_SIDE,
     ATTR_NEXT_CLEANING,
@@ -54,6 +57,7 @@ class SFStreetCleaningSensor(SensorEntity):
     _attr_name = "SF Street Cleaning Status"
     _attr_icon = "mdi:broom"
     _attr_has_entity_name = True
+    _attr_should_poll = True  # allow HA to poll in case tracker events are missed
 
     def __init__(self, hass: HomeAssistant, device_tracker_id: str, geojson: dict):
         """Initialize the sensor."""
@@ -77,6 +81,43 @@ class SFStreetCleaningSensor(SensorEntity):
         )
         self._update_sensor_state()
 
+    async def async_update(self) -> None:
+        """Poll fallback: refresh from latest tracker state."""
+        await self._async_ensure_geojson()
+        self._update_sensor_state()
+
+    async def _async_ensure_geojson(self) -> None:
+        """Refresh GeoJSON daily in case upstream data changes."""
+        if not GEOJSON_URL:
+            return
+        data = self.hass.data.setdefault(DOMAIN, {})
+        geojson = data.get("geojson")
+        fetched_at = data.get("geojson_fetched_at")
+        now = dt_util.utcnow()
+        stale = (
+            geojson is None
+            or fetched_at is None
+            or (now - fetched_at) > timedelta(hours=GEOJSON_REFRESH_INTERVAL_HOURS)
+        )
+        if not stale:
+            self._geojson = geojson
+            return
+        try:
+            session = async_get_clientsession(self.hass)
+            _LOGGER.info("Street cleaning: refreshing GeoJSON from %s", GEOJSON_URL)
+            async with session.get(GEOJSON_URL) as resp:
+                resp.raise_for_status()
+                new_geojson = await resp.json()
+                data["geojson"] = new_geojson
+                data["geojson_fetched_at"] = now
+                self._geojson = new_geojson
+                _LOGGER.debug("Street cleaning: refreshed GeoJSON with %d features", len(new_geojson.get("features", [])))
+        except Exception as err:
+            _LOGGER.warning("Street cleaning: failed to refresh GeoJSON (%s)", err)
+            # Keep existing cached geojson if available
+            if geojson:
+                self._geojson = geojson
+
     @callback
     def _async_on_tracker_update(self, event) -> None:
         """Called when the device tracker state changes."""
@@ -88,11 +129,13 @@ class SFStreetCleaningSensor(SensorEntity):
         tracker_state = self.hass.states.get(self._device_tracker_id)
         if not tracker_state or tracker_state.state in (STATE_UNKNOWN, STATE_UNAVAILABLE):
             self._state = STATE_UNKNOWN
+            _LOGGER.debug("Street cleaning: tracker %s unavailable or missing", self._device_tracker_id)
             return
 
         try:
             lat = float(tracker_state.attributes.get("latitude", 0))
             lon = float(tracker_state.attributes.get("longitude", 0))
+            _LOGGER.debug("Street cleaning: tracker %s lat=%s lon=%s", self._device_tracker_id, lat, lon)
             # Try different potential attribute names for heading
             img_rot = tracker_state.attributes.get("course", tracker_state.attributes.get("heading", tracker_state.attributes.get("compassDirection")))
             
@@ -102,6 +145,7 @@ class SFStreetCleaningSensor(SensorEntity):
                     rotation = int(float(img_rot)) % 360
                 except ValueError:
                     pass
+            _LOGGER.debug("Street cleaning: heading=%s rotation=%s", img_rot, rotation)
             
             # Use geometry logic
             result = find_cleaning_data(self._geojson, lat, lon, rotation)
@@ -109,6 +153,7 @@ class SFStreetCleaningSensor(SensorEntity):
             if not result:
                 self._state = "Unknown Location"
                 self._attributes = {}
+                _LOGGER.debug("Street cleaning: no matching segment found for lat=%s lon=%s", lat, lon)
                 return
 
             self._attributes = {
@@ -159,10 +204,12 @@ class SFStreetCleaningSensor(SensorEntity):
                     self._state = "Warning"
                 else:
                     self._state = "Clear"
+                _LOGGER.debug("Street cleaning: matched %s side=%s hours_until=%.2f", result.get('street'), result.get('parkedOnSide'), hours_until)
                     
             else:
                 self._state = "No Schedule Found"
                 self._attributes[ATTR_CLEANING_IN_HOURS] = -1
+                _LOGGER.debug("Street cleaning: matched %s but no schedule found", result.get('street'))
 
         except Exception as e:
             _LOGGER.error("Error updating street cleaning sensor: %s", e)
