@@ -69,6 +69,31 @@ action:
       message: "Don't forget! Cleaning on {{ state_attr('sensor.sf_street_cleaning_status', 'street') }} is tomorrow at {{ state_attr('sensor.sf_street_cleaning_status', 'next_cleaning') }}."
 ```
 
+### Example 3: Parked Notification
+
+Trigger when you park the car (Ignition Off). Wait 2 minutes for GPS to update, then notify if there is an upcoming cleaning.
+
+```yaml
+alias: "Street Cleaning: Parked Check"
+trigger:
+  - platform: state
+    entity_id: sensor.fordpass_ignitionstatus
+    from: "On"
+    to: "Off"
+    for: "00:01:00" # Wait 1 mins for GPS to settle
+condition:
+  - condition: numeric_state
+    entity_id: sensor.sf_street_cleaning_status
+    attribute: cleaning_in_hours
+    above: 0
+    below: 72 # Only notify if cleaning is within 3 days
+action:
+  - action: notify.mobile_app_your_phone
+    data:
+      title: "🚗 Parked in SF"
+      message: "You are parked on {{ state_attr('sensor.sf_street_cleaning_status', 'street') }}. Next cleaning is {{ state_attr('sensor.sf_street_cleaning_status', 'next_cleaning') }}."
+```
+
 ## Testing
 
 To verify everything is working without waiting for street cleaning:
